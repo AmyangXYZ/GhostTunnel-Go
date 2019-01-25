@@ -6,6 +6,10 @@ Hide payload in 802.11's probe-req and beacon frame.
 
 Compatible with 360's C++ version client.
 
+## Demo
+
+![](./ghserver-demo.gif)
+
 ## Status
 
 server side done.
