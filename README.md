@@ -17,5 +17,4 @@ server side done.
 ## Todo
 
 - client side
-- utf8 convert
 - file transfer

