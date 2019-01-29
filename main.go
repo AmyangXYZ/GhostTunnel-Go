@@ -111,16 +111,15 @@ func (s *GTServer) Run() {
 		}
 	}()
 
-	go s.checkStatus()
+	go s.checkClientsStatus()
 
 	s.handleConsole()
 }
 
 func (s *GTServer) sendServerHeartBeat() {
-	time.Sleep(30 * time.Second)
 	for {
-		s.send(s.curOptCltID, TunnelConnHeartBeat, "")
 		time.Sleep(30 * time.Second)
+		s.send(s.curOptCltID, TunnelConnHeartBeat, "")
 	}
 }
 
@@ -265,7 +264,7 @@ func (s *GTServer) handleFile() {
 	}
 }
 
-func (s *GTServer) checkStatus() {
+func (s *GTServer) checkClientsStatus() {
 	for {
 		for _, c := range s.clients {
 			if time.Since(c.lastHeartBeat) > 30*time.Second {
