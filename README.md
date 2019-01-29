@@ -9,12 +9,3 @@ Compatible with 360's C++ version client.
 ## Demo
 
 ![](./ghserver-demo.gif)
-
-## Status
-
-server side done.
-
-## Todo
-
-- client side
-- file transfer
