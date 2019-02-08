@@ -214,8 +214,8 @@ func (w *WinAPI) Close() {
 	}
 }
 
-// call WlanScan to send probe-req
-func (w *WinAPI) send(t *TunnelData) {
+// Send call WlanScan to send probe-req
+func (w *WinAPI) Send(t *TunnelData) {
 	var p1, p2 []byte
 	var pIeData *WLAN_RAW_DATA
 
@@ -237,12 +237,13 @@ func (w *WinAPI) send(t *TunnelData) {
 	p1 = []byte(t.payload)
 
 	if len(t.payload) > 26 {
+		t.dataType |= DataInVendor
 		t.length = 26
 		p1 = []byte(t.payload)[0:26]
 		p2 = []byte(t.payload)[26:]
 		pIeData = &WLAN_RAW_DATA{
-			dwDataSize: uint32(257),
-			DataBlob:   [257]byte{0xdd, uint8(len(p2))},
+			dwDataSize: uint32(len(p2) + 2),
+			DataBlob:   [257]byte{0xDD, uint8(len(p2))},
 		}
 		for i := 0; i < len(p2); i++ {
 			pIeData.DataBlob[i+2] = p2[i]
@@ -266,10 +267,8 @@ func (w *WinAPI) send(t *TunnelData) {
 	fmt.Printf("[*] Sent %d bytes\n", len(t.payload)+6)
 }
 
-// don't waste every probe-request.
-func (w *WinAPI) SendAndReceive(t *TunnelData) *TunnelData {
-	w.send(t)
-
+// Receive call WlanGetNetworkBssList to scan ssid.
+func (w *WinAPI) Receive() *TunnelData {
 	var blist *WLAN_BSS_LIST
 	var ssid *[32]byte
 	e = WlanGetNetworkBssList(w.handle, &w.guid, nil, 0, 0, 0, &blist)
@@ -296,18 +295,18 @@ func (w *WinAPI) SendAndReceive(t *TunnelData) *TunnelData {
 		w.rSeq = ssid[2]
 	}
 
-	tt := &TunnelData{
+	t := &TunnelData{
 		flag:     ssid[0],
 		dataType: ssid[1],
 		seq:      ssid[2],
 		clientID: ssid[3],
 		serverID: ssid[4],
 		length:   ssid[5],
-		payload:  string(ssid[6 : 6+ssid[5]]),
+		payload:  ssid[6 : 6+ssid[5]],
 	}
 
-	if (tt.dataType & DataInVendor) != 0 {
-		tt.dataType &= ^DataInVendor
+	if (t.dataType & DataInVendor) != 0 {
+		t.dataType &= ^DataInVendor
 	}
-	return tt
+	return t
 }

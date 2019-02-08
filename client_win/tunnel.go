@@ -8,13 +8,14 @@ type TunnelData struct {
 	clientID uint8
 	serverID uint8
 	length   uint8
-	payload  string
+	payload  []byte
 }
 
 // flags in tunnelData
 const (
-	ValidtunnelData uint8 = 0xFE
-	DataInVendor    uint8 = 0x80
+	ValidtunnelData  uint8 = 0xFE
+	DataInVendor     uint8 = 0x80
+	MaxPayloadLength       = 281 // 32-6+255
 )
 
 // data type - Tunnel Connection
