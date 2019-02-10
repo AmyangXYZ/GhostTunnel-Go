@@ -98,21 +98,24 @@ func (s *GTServer) Run() {
 	}
 	defer s.handle.Close()
 
-	err = s.handle.SetBPFFilter("type mgt subtype probe-req")
+	// err = s.handle.SetBPFFilter("type mgt subtype probe-req")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	packetSource := gopacket.NewPacketSource(s.handle, s.handle.LinkType())
-	go func() {
-		for packet := range packetSource.Packets() {
-			s.handlePacket(packet)
-		}
-	}()
+	for {
+		s.send(0, TunnelShellData, "12346578901234567890123456789012345678901234567890")
+	}
+	// packetSource := gopacket.NewPacketSource(s.handle, s.handle.LinkType())
+	// go func() {
+	// 	for packet := range packetSource.Packets() {
+	// 		s.handlePacket(packet)
+	// 	}
+	// }()
 
-	go s.checkClientsStatus()
+	// go s.checkClientsStatus()
 
-	s.handleConsole()
+	// s.handleConsole()
 }
 
 func (s *GTServer) sendServerHeartBeat() {
@@ -272,22 +275,22 @@ func (s *GTServer) checkClientsStatus() {
 }
 
 func (s *GTServer) send(clientID, dataType uint8, payload string) {
-	var client *clientSession
-	for _, c := range s.clients {
-		// client exists
-		if c.id == clientID {
-			client = c
-			break
-		}
-		fmt.Printf("[!] Client %d not found\n", clientID)
-		return
-	}
+	// var client *clientSession
+	// for _, c := range s.clients {
+	// 	// client exists
+	// 	if c.id == clientID {
+	// 		client = c
+	// 		break
+	// 	}
+	// 	fmt.Printf("[!] Client %d not found\n", clientID)
+	// 	return
+	// }
 
-	client.wSeq++
+	// client.wSeq++
 	s.bcn = &tunnelData{
 		flag:     ValidtunnelData,
 		dataType: dataType,
-		seq:      client.wSeq,
+		seq:      0,
 		clientID: clientID,
 		serverID: s.serverID,
 		length:   uint8(len(payload)),
