@@ -10,7 +10,7 @@ No actual WiFi connection is required.
 
 ### Server
 
-`./server-linux64 -iface your-monitor-mode-adapter`
+`# ./server-linux64 -iface your-monitor-mode-adapter`
 
 Compile requirements: [gopacket](https://github.com/google/gopacket/), libpcap or winpcap
 
