@@ -224,8 +224,10 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-	go c.sendConnReq()
+
 	go c.sendHeartBeat()
 
-	c.handlePacket()
+	go c.handlePacket()
+
+	c.sendConnReq()
 }
