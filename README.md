@@ -20,7 +20,7 @@ Clients use system native WiFi api, so we don't need privilege and additional de
 
 #### Windows
 
-Simply run the client_win.exe. But I strongly recommend to use [P4wnP1](https://github.com/mame82/P4wnP1_aloa) to ship it!
+Simply run the client.exe. But I strongly recommend to use [P4wnP1](https://github.com/mame82/P4wnP1_aloa) to ship it!
 
 ## Demo
 
@@ -28,9 +28,7 @@ Simply run the client_win.exe. But I strongly recommend to use [P4wnP1](https://
 
 ## Status
 
-Server side done.
-
-Windows client almost done(I am stuck in extracting Information Elements, not as simple as using C++, which means the client cannot receive command longer than 26 bytes)
+Server side and Windows client done.
 
 ## Todo
 

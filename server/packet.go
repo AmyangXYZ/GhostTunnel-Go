@@ -48,9 +48,9 @@ func createBeacon(t *tunnelData) []byte {
 	p1 = t.payload
 	p2 = ""
 
-	vendor := len(t.payload) > 26 // 32-2-6
+	vendor := len(t.payload) > 26 // 32-6
 	if vendor {
-		t.length = 0xAE
+		t.length = 0x1A
 		t.dataType |= DataInVendor
 		p1 = t.payload[0:26]
 		p2 = t.payload[26:]
