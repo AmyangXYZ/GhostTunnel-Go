@@ -24,7 +24,7 @@ Simply run the client.exe. But I strongly recommend to use [P4wnP1](https://gith
 
 ## Demo
 
-![](./ghserver-demo.gif)
+![](./demo.gif)
 
 ## Status
 
