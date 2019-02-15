@@ -310,34 +310,3 @@ func (w *WinAPI) Receive() *TunnelData {
 	}
 	return t
 }
-
-// func main() {
-// 	w := InitWinAPI()
-// 	var blist *WLAN_BSS_LIST
-
-// 	for {
-// 		w.Send(nil)
-// 		e = WlanGetNetworkBssList(w.handle, &w.guid, nil, 0, 0, 0, &blist)
-
-// 		if e != ERROR_SUCCESS {
-// 			fmt.Println(e.Error())
-// 			return
-// 		}
-// 		for i := uint32(0); i < blist.dwNumberOfItems; i++ {
-// 			if blist.wlanBssEntries[i].dot11Ssid.ucSSID[0] == 0xFE {
-// 				/*
-// 					I want to do this, but the go code doesn't work...
-// 						// Information Elements
-// 						PBYTE pIeRawData = (PBYTE)bssEntry + bssEntry->ulIeOffset;
-// 						PBYTE pBeaconFrame = (PBYTE)&beaconFrame[index];
-// 						memcpy((void *)pBeaconFrame, (void *)pIeRawData, bssEntry->ulIeSize);
-// 						index += bssEntry->ulIeSize;
-// 				*/
-// 				entry := &blist.wlanBssEntries[i]
-// 				pEntry := unsafe.Pointer(&entry)
-// 				fmt.Println(*(*[255]byte)(unsafe.Pointer(uintptr(pEntry) + uintptr(entry.ulIeOffset))))
-// 			}
-// 		}
-// 		WlanFreeMemory(uintptr(unsafe.Pointer(blist)))
-// 	}
-// }
