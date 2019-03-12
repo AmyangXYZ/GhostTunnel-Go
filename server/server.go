@@ -275,7 +275,7 @@ func (s *GTServer) send(clientID, dataType uint8, payload string) {
 	s.bcn = &tunnelData{
 		flag:     ValidtunnelData,
 		dataType: dataType,
-		seq:      0,
+		seq:      client.wSeq,
 		clientID: clientID,
 		serverID: s.serverID,
 		length:   uint8(len(payload)),
