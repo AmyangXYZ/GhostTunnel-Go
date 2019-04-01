@@ -2,7 +2,7 @@
 
 Golang version of [Ghost Tunnel](https://github.com/360PegasusTeam/GhostTunnel), or called Wifi Covert Channel.
 
-Hide backdoor payload in 802.11 probe-req and beacon frame.
+Hide backdoor payload in 802.11 Probe-req and Beacon Frame.
 
 No actual WiFi connection is required.
 
@@ -16,20 +16,14 @@ Compile requirements: [gopacket](https://github.com/google/gopacket/), libpcap o
 
 ### Client
 
-Clients use system native WiFi api, so we don't need privilege and additional dependency.
+Client uses system native WiFi api, so we don't need privilege and additional dependency.
 
-#### Windows
+Simply run the `client.exe`. But I strongly recommend to use [P4wnP1](https://github.com/mame82/P4wnP1_aloa) to ship it!
 
-Simply run the client.exe. But I strongly recommend to use [P4wnP1](https://github.com/mame82/P4wnP1_aloa) to ship it!
+>Tips:
+>
+>Maybe the fastest way is running a HID script to download the malware from P4wnP1's HTTP Server :-)
 
 ## Demo
 
 ![](./demo.gif)
-
-## Status
-
-Server side and Windows client done.
-
-## Todo
-
-Linux and Mac clients.
