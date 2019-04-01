@@ -53,7 +53,7 @@ type dlFile struct {
 }
 
 func main() {
-	iface := flag.String("iface", "", "interface")
+	iface := flag.String("iface", "wlan0mon", "interface")
 	flag.Parse()
 
 	server := New(*iface)
